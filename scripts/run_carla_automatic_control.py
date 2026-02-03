@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """
 Launch CARLA's automatic_control.py: drive with an autopilot agent, camera view + HUD.
+Defaults to --loop so the car keeps getting new destinations instead of exiting after one.
 
 Usage:
     python scripts/run_carla_automatic_control.py [--host 127.0.0.1] [--port 2000]
@@ -22,7 +23,10 @@ def main():
         print("CARLA automatic_control.py not found: %s" % AUTOMATIC_CONTROL)
         print("Set CARLA_ROOT to your CARLA install directory.")
         return 1
-    rc = subprocess.call([sys.executable, AUTOMATIC_CONTROL] + sys.argv[1:])
+    args = list(sys.argv[1:])
+    if not any(a in ("--loop", "-l") for a in args):
+        args.append("--loop")  # keep driving to new targets instead of exiting after one
+    rc = subprocess.call([sys.executable, AUTOMATIC_CONTROL] + args)
     return rc
 
 

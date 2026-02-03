@@ -2,6 +2,8 @@
 
 Vision-based perception for soft road boundaries on unmarked dirt roads (HATCI off-road autonomy). This repo gets CARLA up and running with Python and will host the perception stack.
 
+**Full guide:** [docs/CARLA_AND_PERCEPTION_GUIDE.md](docs/CARLA_AND_PERCEPTION_GUIDE.md) — scripts, camera/map options, maps (including Town07 “not found”), and prototyping with pre-trained segmentation models.
+
 ## Getting CARLA up and running (Python)
 
 ### 1. Start the CARLA server
@@ -64,7 +66,7 @@ To see exactly what the car’s camera sees while the car drives itself:
 python scripts/run_autopilot_camera.py
 ```
 
-A separate OpenCV window shows the RGB camera feed. The vehicle drives on autopilot (view only). Press **q** or **ESC** to exit. Optional: `--width` and `--height` set the camera resolution (default 1280x720).
+A separate OpenCV window shows the RGB camera feed (defaults: 120° FOV, ~5 MP). The vehicle drives on autopilot (view only). Press **q** or **ESC** to exit. Optional: `--map`, `--fov`, `--width`, `--height`.
 
 To drive the car yourself (manual control), use CARLA’s official manual control (full HUD, keybinds, camera angles, reverse, hand-brake, etc.):
 

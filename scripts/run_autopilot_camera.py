@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 """
 Spawn a vehicle in CARLA and show its RGB camera feed in a separate OpenCV window.
-Car drives on autopilot (view only). This is the view your perception stack will use.
+Car drives on autopilot (view only). Defaults match real-world camera: 120 deg FOV, ~5 MP RGB.
 
 Usage:
-    python scripts/run_autopilot_camera.py [--host 127.0.0.1] [--port 2000]
+    python scripts/run_autopilot_camera.py [--host 127.0.0.1] [--port 2000] [--map Town02] [--fov 120] [--width 2560] [--height 1920]
     Press 'q' or ESC in the camera window to exit.
 """
 
@@ -43,10 +43,28 @@ def main():
     parser.add_argument("--host", default="127.0.0.1", help="CARLA server host")
     parser.add_argument("--port", type=int, default=2000, help="CARLA server port")
     parser.add_argument(
-        "--width", type=int, default=1280, help="Camera image width (default: 1280)"
+        "--map",
+        metavar="NAME",
+        default=None,
+        help="Load this map (e.g. Town01, Town02, ... Town07). If omitted, use current map.",
     )
     parser.add_argument(
-        "--height", type=int, default=720, help="Camera image height (default: 720)"
+        "--fov",
+        type=float,
+        default=120.0,
+        help="Camera horizontal field of view in degrees (default: 120, match real camera)",
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=2560,
+        help="Camera image width (default: 2560, ~5 MP with height 1920)",
+    )
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=1920,
+        help="Camera image height (default: 1920, ~5 MP with width 2560)",
     )
     args = parser.parse_args()
 
@@ -60,6 +78,19 @@ def main():
         print("Make sure CARLA is running (CarlaUE4.exe) and a map is loaded.")
         return 1
 
+    if args.map:
+        print("Loading map: %s (may take 30–60 s on first load) ..." % args.map)
+        client.set_timeout(90.0)  # map load can take a long time
+        try:
+            client.load_world(args.map)
+        except RuntimeError as e:
+            if "not found" in str(e).lower():
+                print("Map '%s' is not available in this CARLA build." % args.map)
+                print("Run: python scripts/list_carla_maps.py  (with CARLA running) to see available maps.")
+                print("Base install usually has Town01–Town05; Town06/Town07 need the extra maps package.")
+            raise
+        finally:
+            client.set_timeout(10.0)
     world = client.get_world()
     blueprint_library = world.get_blueprint_library()
     spawn_points = world.get_map().get_spawn_points()
@@ -79,10 +110,11 @@ def main():
         print("Spawn failed (spot may be blocked). Try again or pick another map.")
         return 1
 
-    # RGB camera in front of the hood so you see the road ahead (not interior)
+    # RGB camera in front of the hood (params match real camera: 120 deg FOV, ~5 MP)
     camera_bp = blueprint_library.find("sensor.camera.rgb")
     camera_bp.set_attribute("image_size_x", str(args.width))
     camera_bp.set_attribute("image_size_y", str(args.height))
+    camera_bp.set_attribute("fov", str(args.fov))
     camera_transform = carla.Transform(carla.Location(x=2.8, z=1.2))  # hood-level, road view
     camera = world.spawn_actor(camera_bp, camera_transform, attach_to=vehicle)
     vehicle.set_autopilot(True)  # car drives itself; this script is view-only (no keyboard control)
