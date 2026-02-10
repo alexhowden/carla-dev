@@ -89,7 +89,6 @@ class SegmentationDataset(Dataset):
 
 def compute_metrics_factory(num_classes, ignore_index=255):
     """Return a compute_metrics function for the HuggingFace Trainer."""
-    metric = evaluate.load("mean_iou")
 
     def compute_metrics(eval_pred):
         logits, labels = eval_pred
@@ -105,16 +104,11 @@ def compute_metrics_factory(num_classes, ignore_index=255):
         )
         preds = logits_upsampled.argmax(dim=1).numpy()  # (N, H, W)
 
-        # Flatten and filter ignore index
-        preds_flat = preds.reshape(-1)
-        labels_flat = labels.reshape(-1)
-        mask = labels_flat != ignore_index
-        preds_flat = preds_flat[mask]
-        labels_flat = labels_flat[mask]
-
+        # Fresh metric each call to avoid memory leak from accumulated state
+        metric = evaluate.load("mean_iou")
         results = metric.compute(
-            predictions=preds_flat,
-            references=labels_flat,
+            predictions=[p for p in preds],
+            references=[l for l in labels],
             num_labels=num_classes,
             ignore_index=ignore_index,
         )
@@ -153,6 +147,7 @@ def main():
     parser.add_argument("--gradient-checkpointing", action="store_true", help="Enable gradient checkpointing (saves GPU memory)")
     parser.add_argument("--gradient-accumulation-steps", type=int, default=1, help="Gradient accumulation steps (simulate larger batch)")
     parser.add_argument("--dataloader-workers", type=int, default=4, help="DataLoader workers")
+    parser.add_argument("--resume-from-checkpoint", type=str, default=None, help="Path to checkpoint dir to resume from, or 'latest'")
     args = parser.parse_args()
 
     dataset_dir = Path(args.dataset_dir)
@@ -235,8 +230,8 @@ def main():
         metric_for_best_model="mean_iou",
         greater_is_better=True,
         fp16=args.fp16 and torch.cuda.is_available(),
-        gradient_checkpointing=args.gradient_checkpointing,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
+        eval_accumulation_steps=4,
         dataloader_num_workers=args.dataloader_workers,
         remove_unused_columns=False,
         report_to="tensorboard",
@@ -252,8 +247,14 @@ def main():
     )
 
     # Train
-    print("\n=== Starting training ===\n")
-    trainer.train()
+    resume_ckpt = args.resume_from_checkpoint
+    if resume_ckpt == "latest":
+        resume_ckpt = True  # Trainer auto-finds latest checkpoint in output_dir
+    if resume_ckpt:
+        print(f"\n=== Resuming training from checkpoint ===\n")
+    else:
+        print(f"\n=== Starting training ===\n")
+    trainer.train(resume_from_checkpoint=resume_ckpt)
 
     # Save final model
     print(f"\nSaving final model to {args.output_dir} ...")

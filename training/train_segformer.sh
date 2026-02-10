@@ -108,6 +108,7 @@ conda activate "$CONDA_ENV"
 echo "Python: $(which python)"
 echo "PyTorch CUDA available: $(python -c 'import torch; print(torch.cuda.is_available())')"
 echo "GPU: $(python -c 'import torch; print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None")')"
+nvidia-smi
 
 # ---- Check dataset exists ----
 if [ ! -d "$DATASET_DIR/train" ]; then
@@ -131,12 +132,12 @@ python "$SCRIPTS/train_segformer.py" \
     --epochs 50 \
     --batch-size 1 \
     --lr 6e-5 \
-    --image-size 512 \
+    --image-size 256 \
     --save-steps 500 \
     --eval-steps 500 \
     --fp16 \
     --gradient-accumulation-steps 4 \
-    --dataloader-workers 2
+    --dataloader-workers 0
 
 EXIT_CODE=$?
 

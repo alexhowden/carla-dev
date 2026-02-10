@@ -1,13 +1,16 @@
 #!/usr/bin/env python
 """
-Run SegFormer (ADE20K) on the live CARLA ego camera. Shows camera and segmentation side-by-side.
+Run SegFormer on the live CARLA ego camera. Shows camera and segmentation side-by-side.
 Car drives on autopilot. Requires: CARLA running, pip install -r requirements-segmentation.txt.
 
 Usage:
     python scripts/autopilot_segformer.py [--host 127.0.0.1] [--port 2000] [--map Town02] [--model MODEL_ID]
     Press 'q' or ESC to exit.
 
-Model is downloaded from Hugging Face on first run (no manual download).
+Supports both HuggingFace Hub models and local fine-tuned models:
+    --model nvidia/segformer-b0-finetuned-ade-512-512   (default, ADE20K pretrained)
+    --model training/models/rellis3d_segformer_b0        (fine-tuned on RELLIS-3D)
+    --model training/models/rugd_segformer_b0            (fine-tuned on RUGD)
 """
 
 import argparse
@@ -62,11 +65,12 @@ LEGEND_CLASSES = frozenset([
     "floor", "pavement", "dirt", "mud", "snow", "lane", "dirt track",
 ])
 
-def build_legend(id2label, palette, height, num_rows=20):
-    """Build a vertical legend panel: color swatch + class name (driving-relevant classes only)."""
-    # Filter to driving/outdoor-relevant classes only
-    filtered = {i: n for i, n in id2label.items() if n.lower().strip() in LEGEND_CLASSES}
-    id2label = filtered if filtered else id2label
+def build_legend(id2label, palette, height, num_rows=20, filter_classes=True):
+    """Build a vertical legend panel: color swatch + class name."""
+    # For ADE20K (150 classes), filter to driving-relevant only; for fine-tuned models, show all
+    if filter_classes:
+        filtered = {i: n for i, n in id2label.items() if n.lower().strip() in LEGEND_CLASSES}
+        id2label = filtered if filtered else id2label
     legend_width = 220
     row_h = max(18, height // num_rows)
     actual_rows = min(num_rows, len(id2label)) if id2label else 0
@@ -105,7 +109,7 @@ def main():
     parser.add_argument(
         "--model",
         default="nvidia/segformer-b0-finetuned-ade-512-512",
-        help="Hugging Face model id (default: ADE20K SegFormer-B0)",
+        help="HuggingFace model id or local path to fine-tuned model (default: ADE20K SegFormer-B0)",
     )
     parser.add_argument(
         "--width",
@@ -240,7 +244,8 @@ def main():
             t_last_inference = t_now
 
             # Legend: color swatch + class name for first N classes
-            legend = build_legend(id2label, palette, h, num_rows=20)
+            # Show all classes for fine-tuned models (<=30 classes); filter for ADE20K (150)
+            legend = build_legend(id2label, palette, h, num_rows=20, filter_classes=len(id2label) > 30)
             # Side-by-side: camera | segmentation | legend
             combined = np.hstack([bgr, seg_bgr, legend])
             # Scale up for display so the window isn't tiny
