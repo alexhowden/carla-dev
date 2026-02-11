@@ -1,9 +1,10 @@
-# Fine-Tuned SegFormer Model Registry
+# Fine-Tuned Model Registry
 
 Track all fine-tuned models, their configs, and results here.
 
 ## How to Use
 
+### SegFormer (HuggingFace)
 ```bash
 # In CARLA:
 python scripts/autopilot_segformer.py --model training/models/<folder_name>
@@ -12,6 +13,14 @@ python scripts/autopilot_segformer.py --model training/models/<folder_name>
 from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
 model = SegformerForSemanticSegmentation.from_pretrained("training/models/<folder_name>")
 processor = SegformerImageProcessor.from_pretrained("training/models/<folder_name>")
+```
+
+### DeepLabV3+ (PyTorch .pth)
+```python
+# Requires: torch, torchvision
+import torch
+model = torch.load("training/models/deeplabv3_orfd/best_model.pth", map_location="cpu")
+# Binary output: road (1) vs not-road (0)
 ```
 
 ---
@@ -26,6 +35,14 @@ processor = SegformerImageProcessor.from_pretrained("training/models/<folder_nam
 | `rugd_b2_cityscapes_colab` | RUGD | B2 | Cityscapes | 512 | 50 | 8 | 6e-5 | 0.370 | 0.469 | 0.872 | Colab (A100) | some classes have 0 predictions |
 
 > **Fill in results as runs complete.** Add new rows for each new training run.
+
+### DeepLabV3+ Models
+
+| Folder | Dataset | Architecture | Resolution | IoU (val) | IoU (test) | Dice | Notes |
+|--------|---------|-------------|------------|-----------|------------|------|-------|
+| `deeplabv3_orfd` | ORFD + RELLIS | DeepLabV3+ ResNet50 | 512 | 0.858 | 0.930 | 0.963 | Binary (road vs not-road), .pth format |
+
+> **Note:** DeepLabV3+ IoU is binary segmentation — not comparable to multi-class SegFormer mIoU.
 
 ---
 
@@ -47,10 +64,11 @@ processor = SegformerImageProcessor.from_pretrained("training/models/<folder_nam
 
 ## Dataset Info
 
-| Dataset | Classes | Train Samples | Val Samples | Source |
-|---------|---------|---------------|-------------|--------|
-| RELLIS-3D | 21 (+ void=255) | 3,302 | 983 | Texas A&M off-road robot |
-| RUGD | 23 (+ void=255) | ~5,000 | ~1,400 | Unstructured ground robot |
+| Dataset | Classes | Train Samples | Val Samples | Task | Source |
+|---------|---------|---------------|-------------|------|--------|
+| RELLIS-3D | 21 (+ void=255) | 3,302 | 983 | Multi-class terrain | Texas A&M off-road robot |
+| RUGD | 23 (+ void=255) | ~5,000 | ~1,400 | Multi-class terrain | Unstructured ground robot |
+| ORFD | 2 (road/not-road) | — | — | Binary road detection | Off-Road Freespace Detection |
 
 ## Base Model IDs
 
