@@ -1,14 +1,15 @@
 #!/bin/bash
 #
 # SLURM batch script for fine-tuning SegFormer on Great Lakes.
-# Configured for the LSA public GPU account (lsa2).
 #
-# LSA2 limits: 1 GPU, 2 cores, 10 GB RAM, 24 hr max, 1 job at a time.
+# Typical public GPU account limits: 1 GPU, 2 cores, 10 GB RAM, 24 hr max, 1 job at a time.
 # We use SegFormer-B0 by default (fits in 10 GB). B2 may work with
 # batch-size 1 + fp16 but is tight. B5 will NOT fit.
 # Note: SegFormer does NOT support gradient checkpointing.
 #
-# BEFORE FIRST USE: Edit the WORK path further down to match your scratch dir.
+# BEFORE FIRST USE:
+#   1. Edit --account below to match YOUR Slurm account (run `my_accounts` to check)
+#   2. Edit the WORK path further down to match your scratch dir
 #
 # Submit with:
 #   sbatch train_segformer.sh [rellis3d|rugd] [b0|b2]
@@ -21,7 +22,7 @@
 
 # ---- SLURM directives (parsed BEFORE bash runs — no variables allowed) ----
 #SBATCH --job-name=segformer-train
-#SBATCH --account=lsa2
+#SBATCH --account=CHANGE_ME    # <-- set to your account (e.g., lsa2, engin1)
 #SBATCH --partition=gpu
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=2
@@ -31,12 +32,12 @@
 #SBATCH --error=slurm-%j.err
 #SBATCH --mail-type=BEGIN,END,FAIL
 # Uncomment and set your email to get notifications:
-# #SBATCH --mail-user=howden@umich.edu
+# #SBATCH --mail-user=<uniqname>@umich.edu
 
 # ============================================================
 # EDIT THESE for your setup
 # ============================================================
-WORK="/scratch/lsa_root/lsa2/$USER/segformer-training"  # lsa2 scratch dir
+WORK="/scratch/<root>/<account>/$USER/segformer-training"  # <-- EDIT: set your scratch path (see docs/GREAT_LAKES_TRAINING.md)
 CONDA_ENV="$WORK/envs/segformer"
 SCRIPTS="$WORK/training"
 DATASETS="$WORK/datasets"
@@ -45,7 +46,7 @@ OUTPUTS="$WORK/outputs"
 
 # ---- Parse arguments ----
 DATASET="${1:-rellis3d}"    # default: rellis3d
-MODEL_SIZE="${2:-b0}"       # default: b0 (fits in lsa2's 10 GB RAM limit)
+MODEL_SIZE="${2:-b0}"       # default: b0 (fits in 10 GB RAM)
 
 # ---- Validate dataset ----
 case "$DATASET" in
@@ -70,7 +71,7 @@ case "$MODEL_SIZE" in
         MODEL_NAME="nvidia/segformer-b2-finetuned-ade-512-512"
         ;;
     b5)
-        echo "WARNING: B5 likely won't fit in lsa2's 10 GB RAM limit. Try b0 or b2."
+        echo "WARNING: B5 likely won't fit in 10 GB RAM. Try b0 or b2."
         MODEL_NAME="nvidia/segformer-b5-finetuned-ade-640-640"
         ;;
     *)

@@ -75,29 +75,35 @@ The raw RELLIS-3D labels use **non-contiguous** IDs. The `prepare_rellis3d.py` s
 
 Do these steps once when you first get access to Great Lakes.
 
-## 1.1 Great Lakes Access & LSA Accounts
+## 1.1 Great Lakes Access & Accounts
 
-We use the **LSA public accounts** on Great Lakes (free, no application needed for LSA members).
+You need a **Slurm account** with GPU access on Great Lakes. Different colleges provide different public accounts:
 
-There are three LSA accounts. **For GPU training we use `lsa2`:**
+- **LSA** students: `lsa1` (CPU), `lsa2` (GPU), `lsa3` (large memory)
+- **Engineering** students: check with your department or use `engin1`/`engin2` if available
+- Run `my_accounts` after logging in to see which accounts you have access to
 
-| Account | Partition | GPU? | Limits |
-|---------|-----------|------|--------|
-| `lsa1` | `standard` | No | 24 cores, 120 GB RAM, no GPU |
-| **`lsa2`** | **`gpu`** | **1 GPU** | **2 cores, 10 GB RAM, 24 hr max, 1 job at a time** |
-| `lsa3` | `largemem` | No | 36 cores, 180 GB RAM, 168 hr max (high-memory CPU only) |
+For GPU training, you need an account on the **`gpu` partition**. Example resource limits (vary by account):
 
-> **Important:** LSA public accounts are shared college-wide. Jobs may wait in queue. If you need faster turnaround, consider a [Rackham Graduate Student Research Grant](https://rackham.umich.edu/funding/funding-types/rackham-graduate-student-research-grant/) for a paid account.
+| Resource | Typical GPU Account |
+|----------|--------------------|
+| GPUs | 1 |
+| CPUs | 2 |
+| RAM | 10 GB |
+| Wall time | 24 hours max |
+| Concurrent jobs | 1 |
+
+> **Important:** Public accounts are shared college-wide. Jobs may wait in queue. If you need faster turnaround, consider a [Rackham Graduate Student Research Grant](https://rackham.umich.edu/funding/funding-types/rackham-graduate-student-research-grant/) for a paid account.
 
 To verify your access, SSH in and run:
 ```bash
 my_accounts
 ```
-You should see `lsa1`, `lsa2`, `lsa3` listed. If not, email `arc-support@umich.edu` to be added.
+If you don't see a GPU-capable account, email `arc-support@umich.edu`.
 
-### lsa2 constraints for SegFormer training
+### GPU account constraints for SegFormer training
 
-With only **10 GB RAM** and **2 cores**, we need to be conservative:
+With only **10 GB RAM** and **2 cores** (typical for public GPU accounts), we need to be conservative:
 - **SegFormer-B0** fits comfortably (batch size 2, fp16)
 - **SegFormer-B2** is tight — use batch size 1 + fp16 if you want to try it
 - **SegFormer-B5** will NOT fit in 10 GB
@@ -109,21 +115,24 @@ With only **10 GB RAM** and **2 cores**, we need to be conservative:
 ssh <uniqname>@greatlakes.arc-ts.umich.edu
 ```
 
-You'll land in `/home/<uniqname>` (80 GB quota). Your scratch space is at `/scratch/lsa_root/lsa2/<uniqname>`.
+You'll land in `/home/<uniqname>` (80 GB quota). Your scratch space is at `/scratch/<account_root>/<account>/<uniqname>` (e.g., `/scratch/lsa_root/lsa2/<uniqname>` for LSA, or similar for Engineering).
+
+> **Find your scratch path:** Run `my_accounts` and check which accounts you have. Your scratch directory follows the pattern `/scratch/<root>/<account>/<uniqname>/`.
 
 ## 1.3 Set Up Your Working Directory
 
 Use `/scratch` for datasets and training (fast I/O, larger quota). `/home` is for scripts/configs only.
 
 ```bash
-# Create project directory in your lsa2 scratch space
-mkdir -p /scratch/lsa_root/lsa2/$USER/segformer-training
-cd /scratch/lsa_root/lsa2/$USER/segformer-training
+# Create project directory in your scratch space
+# Replace <scratch_path> with your actual scratch directory (see above)
+mkdir -p <scratch_path>/segformer-training
+cd <scratch_path>/segformer-training
 ```
 
 > **Tip:** Add a shortcut to your `~/.bashrc`:
 > ```bash
-> export WORK=/scratch/lsa_root/lsa2/$USER/segformer-training
+> export WORK=<scratch_path>/segformer-training
 > ```
 > Then `source ~/.bashrc` and use `$WORK` everywhere.
 
@@ -133,7 +142,7 @@ From your **local machine**, upload the training scripts from this repo:
 
 ```bash
 # From your local carla-dev directory
-scp -r training/ <uniqname>@greatlakes.arc-ts.umich.edu:/scratch/lsa_root/lsa2/<uniqname>/segformer-training/
+scp -r training/ <uniqname>@greatlakes.arc-ts.umich.edu:<scratch_path>/segformer-training/
 # This puts files at $WORK/training/ on the cluster
 ```
 
@@ -277,16 +286,16 @@ cd $WORK
 # FIRST TIME ONLY: verify the WORK path in the script matches your scratch dir
 nano training/train_segformer.sh
 
-# Submit the job (already configured for lsa2)
+# Submit the job (edit --account in the .sh file first!)
 sbatch training/train_segformer.sh
 ```
 
-The script is pre-configured for `lsa2` (1 GPU, 2 cores, 10 GB RAM, 24 hr). It loads modules, activates your conda env, and runs `train_segformer.py`.
+The script requests 1 GPU, 2 cores, 10 GB RAM, and 24 hr wall time. **Edit the `--account` line in `train_segformer.sh` to match your account** (e.g., `lsa2` for LSA, `engin1` for Engineering, etc.). It loads modules, activates your conda env, and runs `train_segformer.py`.
 
 ### What the SLURM script does
 
 ```
-1. Requests 1 GPU node (lsa2 / gpu partition), 2 CPUs, 10 GB RAM, 24-hour wall time
+1. Requests 1 GPU node (gpu partition), 2 CPUs, 10 GB RAM, 24-hour wall time
 2. Loads CUDA + Python modules
 3. Activates your conda env
 4. Runs train_segformer.py with your chosen dataset and hyperparameters
@@ -295,7 +304,7 @@ The script is pre-configured for `lsa2` (1 GPU, 2 cores, 10 GB RAM, 24 hr). It l
 
 ### Training both models
 
-lsa2 only allows **1 job at a time**, so train them sequentially:
+Most public accounts only allow **1 GPU job at a time**, so train them sequentially:
 
 ```bash
 # Train on RELLIS-3D (submit, wait for it to finish)
@@ -344,9 +353,9 @@ $WORK/outputs/<dataset>_segformer_b0/
 
 ```bash
 # From your LOCAL machine
-scp -r <uniqname>@greatlakes.arc-ts.umich.edu:/scratch/lsa_root/lsa2/<uniqname>/segformer-training/outputs/rellis3d_segformer_b0 ./models/rellis3d_segformer_b0
+scp -r <uniqname>@greatlakes.arc-ts.umich.edu:<scratch_path>/segformer-training/outputs/rellis3d_segformer_b0 ./models/rellis3d_segformer_b0
 
-scp -r <uniqname>@greatlakes.arc-ts.umich.edu:/scratch/lsa_root/lsa2/<uniqname>/segformer-training/outputs/rugd_segformer_b0 ./models/rugd_segformer_b0
+scp -r <uniqname>@greatlakes.arc-ts.umich.edu:<scratch_path>/segformer-training/outputs/rugd_segformer_b0 ./models/rugd_segformer_b0
 ```
 
 ## 2.4 Use in CARLA
@@ -368,7 +377,7 @@ The `--model` flag accepts both HuggingFace model IDs and local directory paths.
 To retrain with different settings, edit variables in `train_segformer.sh` or pass them as arguments:
 
 ```bash
-# Different model size (b0 = default, b2 = more accurate but tight on lsa2)
+# Different model size (b0 = default, b2 = more accurate but tight on 10 GB)
 sbatch training/train_segformer.sh rellis3d b2
 
 # The Python script also accepts direct overrides:
@@ -382,13 +391,13 @@ python training/train_segformer.py \
     --output-dir outputs/rellis3d_segformer_b0
 ```
 
-### Suggested hyperparameters (for lsa2: 1 GPU, 10 GB RAM)
+### Suggested hyperparameters (for public GPU accounts: 1 GPU, 10 GB RAM)
 
 | Parameter | RELLIS-3D | RUGD | Notes |
 |-----------|-----------|------|-------|
 | **Base model** | `nvidia/segformer-b0-finetuned-ade-512-512` | same | B0 fits in 10 GB; B2 is tight |
 | **Epochs** | 50–100 | 50–100 | RELLIS is smaller, may need more |
-| **Batch size** | 2 | 2 | lsa2 has only 10 GB RAM; use 1 for B2 |
+| **Batch size** | 2 | 2 | 10 GB RAM limit; use 1 for B2 |
 | **Learning rate** | 6e-5 | 6e-5 | Standard for fine-tuning SegFormer |
 | **Image size** | 512×512 | 512×512 | Matches pretrained resolution |
 | **Wall time** | ~6–12 hrs | ~8–16 hrs | B0, 50 epochs, batch 2 (24 hr limit) |
@@ -407,9 +416,9 @@ Great Lakes scratch is **not backed up** and old files may be purged. After trai
 
 | Issue | Solution |
 |-------|----------|
-| `sbatch: error: invalid account` | Verify with `my_accounts`. For LSA, use `lsa2` for GPU jobs. |
-| Job stuck in `PD` (pending) | lsa2 GPU partition is shared college-wide. Check: `squeue -A lsa2 -t running`. Wait — jobs may queue for hours. |
-| `CUDA out of memory` | Reduce `--batch-size` to 1, or use B0 instead of B2. lsa2 has only 10 GB RAM. |
+| `sbatch: error: invalid account` | Verify with `my_accounts`. Use whichever account has `gpu` partition access. |
+| Job stuck in `PD` (pending) | Public GPU partitions are shared college-wide. Check: `squeue -A <account> -t running`. Wait — jobs may queue for hours. |
+| `CUDA out of memory` | Reduce `--batch-size` to 1, or use B0 instead of B2. Public accounts typically have only 10 GB RAM. |
 | `gdown` fails / Google Drive limit | Download datasets locally, transfer via `scp` or Globus |
 | `ModuleNotFoundError` | Make sure conda env is activated in your SLURM script. Check paths. |
 | Model loads but CARLA legend is wrong | The model's `config.json` has `id2label`. Verify it matches the dataset's class names. |
