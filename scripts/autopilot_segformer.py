@@ -201,8 +201,8 @@ def main():
         default="nvidia/segformer-b0-finetuned-ade-512-512",
         help="HuggingFace model id or local path to fine-tuned model (default: ADE20K SegFormer-B0)",
     )
-    parser.add_argument("--width", type=int, default=640, help="Camera width (default 640)")
-    parser.add_argument("--height", type=int, default=480, help="Camera height (default 480)")
+    parser.add_argument("--width", type=int, default=960, help="Camera width (default 960, matches AC-IMX490-H120 aspect ratio)")
+    parser.add_argument("--height", type=int, default=620, help="Camera height (default 620, matches AC-IMX490-H120 aspect ratio)")
     parser.add_argument(
         "--infer-every",
         type=int,
@@ -293,7 +293,7 @@ def main():
     camera_bp = blueprint_library.find("sensor.camera.rgb")
     camera_bp.set_attribute("image_size_x", str(args.width))
     camera_bp.set_attribute("image_size_y", str(args.height))
-    camera_bp.set_attribute("fov", "90")
+    camera_bp.set_attribute("fov", "120")
     camera = world.spawn_actor(
         camera_bp,
         carla.Transform(carla.Location(x=2.8, z=1.2)),

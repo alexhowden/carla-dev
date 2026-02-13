@@ -81,8 +81,8 @@ def main():
         default="./training/models/deeplabv3_orfd/best_model.pth",
         help="Path to DeepLabV3+ ORFD checkpoint (.pth)",
     )
-    parser.add_argument("--width", type=int, default=640, help="Camera width")
-    parser.add_argument("--height", type=int, default=480, help="Camera height")
+    parser.add_argument("--width", type=int, default=960, help="Camera width (default 960, matches AC-IMX490-H120 aspect ratio)")
+    parser.add_argument("--height", type=int, default=620, help="Camera height (default 620, matches AC-IMX490-H120 aspect ratio)")
     parser.add_argument("--scale", type=float, default=1.5, help="Display scale factor")
     parser.add_argument("--infer-every", type=int, default=1, metavar="N", help="Run model every Nth frame")
     parser.add_argument("--no-thread", action="store_true", help="Run inference in main loop")
@@ -176,7 +176,7 @@ def main():
     camera_bp = blueprint_library.find("sensor.camera.rgb")
     camera_bp.set_attribute("image_size_x", str(args.width))
     camera_bp.set_attribute("image_size_y", str(args.height))
-    camera_bp.set_attribute("fov", "90")
+    camera_bp.set_attribute("fov", "120")
     camera = world.spawn_actor(
         camera_bp,
         carla.Transform(carla.Location(x=2.8, z=1.2)),
