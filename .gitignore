@@ -1,3 +1,9 @@
+# macOS
+.DS_Store
+
+# Training artifacts
+training_args.bin
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
