@@ -25,6 +25,7 @@ This document covers: running CARLA, project scripts, camera and map options, an
 | `scripts/autopilot.py` | Ego RGB camera while car drives on autopilot. Defaults: 120° FOV, ~5 MP, sporty car (`vehicle.audi.tt`). Supports `--map`, `--vehicle`, `--fov`, `--width`, `--height`. |
 | `scripts/autopilot_segformer.py` | Run SegFormer on the live ego camera; shows camera + segmentation side-by-side. Works with ADE20K and fine-tuned models. Use `--infer-every 5 --width 320 --height 240` for lower-spec machines. |
 | `scripts/autopilot_deeplabv3.py` | Run DeepLabV3+ (binary road detection) on the live ego camera; green road overlay. |
+| `scripts/autopilot_ground_projection.py` | SegFormer + IPM bird's-eye view ground projection. Shows camera feed and BEV segmentation side-by-side with meter grid. Use `--bev-x`, `--bev-ymin`, `--bev-ymax` to tune range. |
 | `scripts/manual_control_segformer.py` | Manual drive (WASD) + SegFormer. Works with ADE20K and fine-tuned models. Supports hand brake (SPACE), reverse (Q). |
 | `scripts/manual_control.py` | CARLA’s manual control (HUD, keybinds, camera angles, reverse). Defaults to sedan (`vehicle.audi.a2`). |
 | `scripts/generate_traffic.py` | Spawn NPC vehicles and pedestrians. |
