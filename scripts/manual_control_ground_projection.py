@@ -341,8 +341,8 @@ def main():
                         help="Run inference as fast as possible (no throttle between frames)")
     parser.add_argument("--bev-x", type=float, default=5,
                         help="BEV lateral half-range in meters (default 5 = 10m total)")
-    parser.add_argument("--bev-ymin", type=float, default=4,
-                        help="BEV minimum forward distance in meters (default 4)")
+    parser.add_argument("--bev-ymin", type=float, default=1,
+                        help="BEV minimum forward distance in meters (default 1)")
     parser.add_argument("--bev-ymax", type=float, default=25,
                         help="BEV maximum forward distance in meters (default 25)")
     parser.add_argument("--bev-size", type=int, default=400,

@@ -4,6 +4,9 @@
 # Training artifacts
 training_args.bin
 
+# MLflow
+mlruns/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
