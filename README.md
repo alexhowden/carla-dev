@@ -2,7 +2,9 @@
 
 Vision-based perception for soft road boundaries on unmarked dirt roads. This repo gets CARLA up and running with Python.
 
-**Full guide:** [docs/CARLA_AND_PERCEPTION_GUIDE.md](docs/CARLA_AND_PERCEPTION_GUIDE.md) — scripts, camera/map options, maps, and prototyping with pre-trained segmentation models.
+**New here? Start with the [Quickstart Guide](docs/QUICKSTART.md)** — takes you from zero to running fine-tuned segmentation models in CARLA.
+
+**Full reference:** [docs/CARLA_AND_PERCEPTION_GUIDE.md](docs/CARLA_AND_PERCEPTION_GUIDE.md) — scripts, camera/map options, maps, and troubleshooting.
 
 ## Getting CARLA up and running (Python)
 

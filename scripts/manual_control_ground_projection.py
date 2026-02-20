@@ -321,7 +321,7 @@ def main():
     parser.add_argument("--map", metavar="NAME", default=None,
                         help="Load this map (e.g. Town01, Town02). If omitted, use current map.")
     parser.add_argument("--model",
-                        default="nvidia/segformer-b0-finetuned-ade-512-512",
+                        default="training/models/rugd_b0_ade_arc",
                         help="HuggingFace model id or local path to fine-tuned model")
     parser.add_argument("--deeplab", action="store_true",
                         help="Use DeepLabV3+ ORFD binary freespace model instead of SegFormer")
