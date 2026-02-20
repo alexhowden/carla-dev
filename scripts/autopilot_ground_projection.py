@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """
-Demo: SegFormer segmentation + Inverse Perspective Mapping (IPM) bird's-eye view in CARLA.
+Demo: Segmentation + Inverse Perspective Mapping (IPM) bird's-eye view in CARLA.
+Supports both SegFormer (multi-class) and DeepLabV3+ ORFD (binary freespace).
 
 Shows three panels side-by-side:
     [Camera feed] [BEV segmentation] [Legend]
@@ -14,7 +15,8 @@ Car drives on autopilot. Requires: CARLA running, pip install -r requirements-se
 Usage:
     python scripts/autopilot_ground_projection.py
     python scripts/autopilot_ground_projection.py --model training/models/rellis3d_b0_ade_arc
-    python scripts/autopilot_ground_projection.py --bev-x 12 --bev-ymin 2 --bev-ymax 30
+    python scripts/autopilot_ground_projection.py --deeplab
+    python scripts/autopilot_ground_projection.py --bev-x 8 --bev-ymin 5 --bev-ymax 30
     Press 'q' or ESC to exit.
 """
 
@@ -37,10 +39,17 @@ try:
     import torch
     from PIL import Image
     from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
+    from torchvision import transforms
 except ImportError as e:
     print("Missing dependency: %s" % e)
     print("Install: pip install -r requirements-segmentation.txt  and  pip install opencv-python")
     sys.exit(1)
+
+try:
+    import segmentation_models_pytorch as smp
+    _HAS_SMP = True
+except ImportError:
+    _HAS_SMP = False
 
 
 # Hand-picked visually distinct colors for off-road classes (BGR order for OpenCV).
@@ -234,8 +243,9 @@ def compute_ipm_homography(K, camera_height, camera_pitch_deg,
     # Project ground corners to image pixels
     img_corners = []
     for gp in ground_corners:
-        # In camera frame: X=lateral, Y=-height (down), Z=forward
-        p_cam = np.array([gp[0], -camera_height, gp[1]])
+        # In camera frame: X=lateral, Y=+down, Z=forward
+        # Ground is below camera, so Y = +camera_height (positive = downward)
+        p_cam = np.array([gp[0], camera_height, gp[1]])
         p_cam = R_pitch @ p_cam
 
         if p_cam[2] <= 0:
@@ -331,6 +341,11 @@ def main():
     parser.add_argument("--model",
                         default="nvidia/segformer-b0-finetuned-ade-512-512",
                         help="HuggingFace model id or local path to fine-tuned model")
+    parser.add_argument("--deeplab", action="store_true",
+                        help="Use DeepLabV3+ ORFD binary freespace model instead of SegFormer")
+    parser.add_argument("--deeplab-model",
+                        default="./training/models/deeplabv3_orfd/best_model.pth",
+                        help="Path to DeepLabV3+ ORFD checkpoint (.pth)")
     parser.add_argument("--width", type=int, default=960,
                         help="Camera width (default 960, matches AC-IMX490-H120 aspect ratio)")
     parser.add_argument("--height", type=int, default=620,
@@ -340,10 +355,10 @@ def main():
     parser.add_argument("--scale", type=float, default=1.5, help="Display scale factor (default 1.5)")
     parser.add_argument("--no-thread", action="store_true",
                         help="Run inference in main loop instead of background thread")
-    parser.add_argument("--bev-x", type=float, default=10,
-                        help="BEV lateral half-range in meters (default 10 = 20m total)")
-    parser.add_argument("--bev-ymin", type=float, default=3,
-                        help="BEV minimum forward distance in meters (default 3)")
+    parser.add_argument("--bev-x", type=float, default=5,
+                        help="BEV lateral half-range in meters (default 5 = 10m total)")
+    parser.add_argument("--bev-ymin", type=float, default=4,
+                        help="BEV minimum forward distance in meters (default 4)")
     parser.add_argument("--bev-ymax", type=float, default=25,
                         help="BEV maximum forward distance in meters (default 25)")
     parser.add_argument("--bev-size", type=int, default=400,
@@ -379,25 +394,51 @@ def main():
 
     # ---- Load model ----
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Loading SegFormer model %s (device: %s) ..." % (args.model, device))
-    print("(First run may download the model from Hugging Face.)")
-    processor = SegformerImageProcessor.from_pretrained(args.model)
-    model = SegformerForSemanticSegmentation.from_pretrained(args.model)
-    model.to(device)
-    model.eval()
+    use_deeplab = args.deeplab
 
-    id2label = getattr(model.config, "id2label", None) or {}
-    id2label = {int(k): str(v) for k, v in id2label.items()}
-    is_finetuned = len(id2label) <= 30
-
-    if is_finetuned:
-        palette = _offroad_palette_bgr(id2label)
+    if use_deeplab:
+        if not _HAS_SMP:
+            print("segmentation-models-pytorch required for --deeplab. Install: pip install segmentation-models-pytorch")
+            return 1
+        print("Loading DeepLabV3+ ORFD from %s (device: %s) ..." % (args.deeplab_model, device))
+        model = smp.DeepLabV3Plus(encoder_name="resnet50", encoder_weights=None, in_channels=3, classes=1)
+        ckpt = torch.load(args.deeplab_model, map_location=device, weights_only=False)
+        model.load_state_dict(ckpt["model_state_dict"])
+        model.to(device)
+        model.eval()
+        print("Model loaded (epoch %d, IoU %.4f)" % (ckpt.get("epoch", -1), ckpt.get("iou", 0.0)))
+        processor = None
+        id2label = {0: "non-drivable", 1: "drivable"}
+        is_finetuned = True
+        palette = np.zeros((256, 3), dtype=np.uint8)
+        palette[0] = (60, 60, 60)    # non-drivable = dark gray (BGR)
+        palette[1] = (0, 200, 0)     # drivable = green (BGR)
         palette_is_bgr = True
-        print("Fine-tuned model (%d classes): %s" % (len(id2label), ", ".join(id2label.values())))
+        deeplab_preprocess = transforms.Compose([
+            transforms.Resize((512, 512)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
     else:
-        palette = _generic_palette()
-        palette_is_bgr = False
-        print("Pretrained model (%d classes), showing driving-relevant classes in legend." % len(id2label))
+        print("Loading SegFormer model %s (device: %s) ..." % (args.model, device))
+        print("(First run may download the model from Hugging Face.)")
+        processor = SegformerImageProcessor.from_pretrained(args.model)
+        model = SegformerForSemanticSegmentation.from_pretrained(args.model)
+        model.to(device)
+        model.eval()
+        id2label = getattr(model.config, "id2label", None) or {}
+        id2label = {int(k): str(v) for k, v in id2label.items()}
+        is_finetuned = len(id2label) <= 30
+        deeplab_preprocess = None
+
+        if is_finetuned:
+            palette = _offroad_palette_bgr(id2label)
+            palette_is_bgr = True
+            print("Fine-tuned model (%d classes): %s" % (len(id2label), ", ".join(id2label.values())))
+        else:
+            palette = _generic_palette()
+            palette_is_bgr = False
+            print("Pretrained model (%d classes), showing driving-relevant classes in legend." % len(id2label))
 
     # ---- Compute IPM homography (once) ----
     camera_height = 1.2  # matches carla.Location(x=2.8, z=1.2)
@@ -456,13 +497,13 @@ def main():
     camera.listen(on_image)
 
     # ---- Display setup ----
-    # Layout: [camera (W x H)] [BEV (bev_size x bev_size, resized to H)] [legend (220 x H)]
+    # Layout: [camera (W x H)] [seg (W x H)] [BEV (bev_size, resized to H)] [legend (220 x H)]
     bev_display_h = args.height
     bev_display_w = int(args.bev_size * (args.height / args.bev_size))
 
     window_name = "Autopilot + Ground Projection (BEV)"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-    total_w = int((args.width + bev_display_w + 220) * args.scale)
+    total_w = int((args.width * 2 + bev_display_w + 220) * args.scale)
     total_h = int(args.height * args.scale)
     cv2.resizeWindow(window_name, total_w, total_h)
     print("Running. Press 'q' or ESC to exit.")
@@ -470,10 +511,40 @@ def main():
         print("Inference runs in background thread.")
 
     last_seg_mask = [None]
+    last_seg_bgr = [None]
     last_bev_bgr = [None]
     last_fps_timestamp = [None]
     fps_smooth = [0.0]
     stop_inference = threading.Event()
+
+    def run_segmentation(bgr):
+        """Run segmentation on a BGR frame, return colorized BGR seg image."""
+        h, w = bgr.shape[:2]
+        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        pil = Image.fromarray(rgb)
+
+        if use_deeplab:
+            input_tensor = deeplab_preprocess(pil).unsqueeze(0).to(device)
+            with torch.no_grad():
+                output = model(input_tensor)
+            mask = torch.sigmoid(output).squeeze().cpu().numpy()
+            mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_LINEAR)
+            seg = (mask > 0.5).astype(np.uint8)
+        else:
+            inputs = processor(images=pil, return_tensors="pt")
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            with torch.no_grad():
+                outputs = model(**inputs)
+            logits = outputs.logits
+            logits = torch.nn.functional.interpolate(
+                logits, size=(h, w), mode="bilinear", align_corners=False
+            )
+            seg = logits.argmax(dim=1).squeeze(0).cpu().numpy().astype(np.uint8)
+
+        seg_colored = palette[seg % 256]
+        if not palette_is_bgr:
+            seg_colored = cv2.cvtColor(seg_colored, cv2.COLOR_RGB2BGR)
+        return seg, seg_colored
 
     def inference_worker():
         infer_interval = args.infer_every / 30.0
@@ -485,25 +556,10 @@ def main():
             if bgr is None:
                 continue
             bgr = bgr.copy()
-            h, w = bgr.shape[:2]
             try:
-                rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-                pil = Image.fromarray(rgb)
-                inputs = processor(images=pil, return_tensors="pt")
-                inputs = {k: v.to(device) for k, v in inputs.items()}
-                with torch.no_grad():
-                    outputs = model(**inputs)
-                logits = outputs.logits
-                logits = torch.nn.functional.interpolate(
-                    logits, size=(h, w), mode="bilinear", align_corners=False
-                )
-                seg = logits.argmax(dim=1).squeeze(0).cpu().numpy().astype(np.uint8)
+                seg, seg_colored = run_segmentation(bgr)
                 last_seg_mask[0] = seg
-
-                # Colorize segmentation
-                seg_colored = palette[seg % 256]
-                if not palette_is_bgr:
-                    seg_colored = cv2.cvtColor(seg_colored, cv2.COLOR_RGB2BGR)
+                last_seg_bgr[0] = seg_colored
 
                 # Warp to BEV
                 bev = cv2.warpPerspective(
@@ -548,22 +604,9 @@ def main():
             if not use_thread:
                 run_inference = (frame_count % args.infer_every == 0)
                 if run_inference:
-                    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-                    pil = Image.fromarray(rgb)
-                    inputs = processor(images=pil, return_tensors="pt")
-                    inputs = {k: v.to(device) for k, v in inputs.items()}
-                    with torch.no_grad():
-                        outputs = model(**inputs)
-                    logits = outputs.logits
-                    logits = torch.nn.functional.interpolate(
-                        logits, size=(h, w), mode="bilinear", align_corners=False
-                    )
-                    seg = logits.argmax(dim=1).squeeze(0).cpu().numpy().astype(np.uint8)
+                    seg, seg_colored = run_segmentation(bgr)
                     last_seg_mask[0] = seg
-
-                    seg_colored = palette[seg % 256]
-                    if not palette_is_bgr:
-                        seg_colored = cv2.cvtColor(seg_colored, cv2.COLOR_RGB2BGR)
+                    last_seg_bgr[0] = seg_colored
 
                     bev = cv2.warpPerspective(
                         seg_colored, H, bev_size,
@@ -585,7 +628,9 @@ def main():
             disp_fps = fps_smooth[0]
             bev_bgr = last_bev_bgr[0]
 
-            if bev_bgr is not None:
+            seg_bgr = last_seg_bgr[0]
+
+            if bev_bgr is not None and seg_bgr is not None:
                 # Resize BEV to match camera height
                 bev_resized = cv2.resize(bev_bgr, (bev_display_w, bev_display_h),
                                          interpolation=cv2.INTER_NEAREST)
@@ -593,8 +638,8 @@ def main():
                 # Build legend
                 legend = build_legend(id2label, palette, h, is_finetuned, palette_is_bgr)
 
-                # Combine: [camera] [BEV] [legend]
-                combined = np.hstack([bgr, bev_resized, legend])
+                # Combine: [camera] [seg] [BEV] [legend]
+                combined = np.hstack([bgr, seg_bgr, bev_resized, legend])
 
                 if args.scale != 1.0:
                     new_w = int(combined.shape[1] * args.scale)
@@ -614,8 +659,8 @@ def main():
                 cv2.putText(combined, "Speed: %.0f km/h" % speed_kmh,
                             (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1)
 
-                # BEV label
-                bev_label_x = int(args.width * args.scale) + 10
+                # BEV label (after camera + seg panels)
+                bev_label_x = int(args.width * 2 * args.scale) + 10
                 cv2.putText(combined, "Bird's Eye View",
                             (bev_label_x + 2, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 3)
                 cv2.putText(combined, "Bird's Eye View",
